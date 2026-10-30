@@ -1,0 +1,18 @@
+{
+    "domain": "mychevrolet",
+    "name": "myChevrolet",
+    "codeowners": ["@Dvalin21"],
+    "config_flow": true,
+    "documentation": "https://github.com/Dvalin21/hass-mychevrolet",
+    "integration_type": "hub",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/Dvalin21/hass-mychevrolet/issues",
+    "loggers": [
+        "mychevrolet",
+        "pyonstar"
+    ],
+    "requirements": [
+        "pyonstar==0.0.14"
+    ],
+    "version": "0.1.0"
+}

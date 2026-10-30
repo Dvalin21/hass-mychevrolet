@@ -1,0 +1,42 @@
+{
+  "title": "myChevrolet",
+  "step": {
+    "user": {
+      "title": "myChevrolet / OnStar account",
+      "description": "Enter your myChevrolet (OnStar) account credentials for the US region.",
+      "data": {
+        "username": "Account email",
+        "password": "Password",
+        "vin": "Vehicle VIN (17 characters)",
+        "totp_secret": "TOTP secret (from your GM account's authenticator setup)",
+        "device_id": "Device ID (optional UUID; auto-generated if blank)",
+        "onstar_pin": "Account PIN (optional)"
+      }
+    },
+    "reauth_confirm": {
+      "title": "Re-authenticate myChevrolet",
+      "description": "The stored credentials were rejected. Re-enter them to continue.",
+      "data": {
+        "username": "Account email",
+        "password": "Password",
+        "totp_secret": "TOTP secret"
+      }
+    }
+  },
+  "options": {
+    "title": "myChevrolet options",
+    "data": {
+      "scan_interval": "Poll interval (minutes)",
+      "cheater_mode": "Recreate client on rate-limit (429) to escape per-device throttling"
+    }
+  },
+  "error": {
+    "invalid_auth": "Authentication failed. Check your credentials and TOTP secret.",
+    "cannot_connect": "Could not reach the OnStar cloud. Check your connection and try again.",
+    "unknown": "An unexpected error occurred."
+  },
+  "abort": {
+    "already_configured": "This vehicle (VIN) is already configured.",
+    "reauth_successful": "myChevrolet re-authentication was successful."
+  }
+}

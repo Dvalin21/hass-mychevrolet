@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Home Assistant runtime artifacts (never commit token files)
+.storage/
+
+# Local dev artifacts (not part of the shippable integration)
+vendor/
+research/
+NEXT.md
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
