@@ -1,5 +1,7 @@
 # myChevrolet for Home Assistant
 
+[![Install myChevrolet in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=mychevrolet)
+
 A Home Assistant integration for **Chevrolet / GMC / Buick / Cadillac plug-in and
 electric vehicles** that are enrolled in the **myChevrolet / myGMC / myBuick /
 myCadillac** app (US region, OnStar-backed). It exposes battery, charge, range,
@@ -25,6 +27,7 @@ the GM API token exchange, the two-token caching and the command-status polling
 - [Entities](#entities)
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Home Assistant install button](#home-assistant-install-button)
   - [Manual install](#manual-install)
 - [Configuration](#configuration)
   - [Setup fields](#setup-fields)
@@ -58,6 +61,9 @@ the GM API token exchange, the two-token caching and the command-status polling
   actually entitles that command.
 - **Reauth on expiry.** When GM rotates or revokes tokens and login stops
   working, you get a re-auth prompt instead of a silent break.
+- **Integration health.** A `sensor.<vehicle>_health` entity reports `ok`,
+  `rate_limited`, or `error`, plus backoff timers and last successful update —
+  so you know at a glance when data is stale.
 
 ## Supported vehicles
 
@@ -79,6 +85,7 @@ Every entity hangs off a single device named after your vehicle (one per VIN).
 |---|---|---|---|
 | Sensor | Odometer | all | Total distance (km, total-increasing). |
 | Sensor | Battery Level | EV | State of charge (%). |
+| Sensor | Health | all | Integration health: `ok`, `rate_limited`, or `error`. |
 | Sensor | Charge State | EV | `charging` / `not_charging` / `fully_charged`. |
 | Sensor | Plug State | EV | `plugged` / `unplugged`. |
 | Sensor | Plug Voltage | EV | Available charge voltage (V). |
@@ -109,6 +116,11 @@ that command.*
 
 ## Installation
 
+### Home Assistant install button
+
+Click the badge at the top of this page to start the config flow directly
+(requires the integration files already present in `config/custom_components/`).
+
 ### Manual install
 
 1. Copy the `mychevrolet` folder into your Home Assistant
@@ -117,8 +129,19 @@ that command.*
 3. Go to **Settings → Devices & Services → Add Integration** and search for
    **myChevrolet**.
 
-*(HACS packaging is not included yet — add it as a custom repository or wait for
-a future release.)*
+### HACS (card only)
+
+The **integration** is manual install only — it is not in the official Home
+Assistant marketplace or HACS default store. Add `mychevrolet` manually as above.
+
+The **card** (`hass-mychevrolet-card`) can be installed via HACS: add
+`https://github.com/Dvalin21/hass-mychevrolet-card` as a custom repository
+(category: **Frontend**), install **myChevrolet Status Card**, then force-refresh
+your browser (`Ctrl+F5`).
+
+Or manually: download `mychevrolet-status-card.js` from the latest release,
+place it in `config/www/`, add a resource at `/local/mychevrolet-status-card.js`
+(type: `module`), and force-refresh.
 
 ## Configuration
 
@@ -174,11 +197,13 @@ GM's OnStar link is slow and aggressively rate-limited. Two strategies are built
 in:
 
 - **Standard mode (default):** on a `429`, the coordinator backs off that
-  endpoint for **24 hours** rather than hammering it.
+  endpoint for **30 minutes** rather than hammering it. Only the endpoint that
+  returned `429` is backed off — the other keeps polling.
 - **Cheater mode (opt-in):** poll faster (2 min) and, on a `429`, recreate the
-  client with a fresh device ID to escape GM's per-device-id rate bucket. Enable
-  this only if you hit throttling and understand it trades a bit more API traffic
-  for fresher data.
+  client with a fresh device ID to escape GM's per-device-id rate bucket. The
+  new device ID is persisted to your config entry, so it survives an HA
+  restart. Enable this only if you hit throttling and understand it trades a
+  bit more API traffic for fresher data.
 
 ### Re-authentication
 
