@@ -1,7 +1,5 @@
 # myChevrolet for Home Assistant
 
-[![Install myChevrolet in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=mychevrolet)
-
 A Home Assistant integration for **Chevrolet / GMC / Buick / Cadillac plug-in and
 electric vehicles** that are enrolled in the **myChevrolet / myGMC / myBuick /
 myCadillac** app (US region, OnStar-backed). It exposes battery, charge, range,
@@ -116,18 +114,20 @@ that command.*
 
 ## Installation
 
-### Home Assistant install button
-
-Click the badge at the top of this page to start the config flow directly
-(requires the integration files already present in `config/custom_components/`).
-
-### Manual install
+### Manual install (required first)
 
 1. Copy the `mychevrolet` folder into your Home Assistant
    `config/custom_components/` directory.
 2. Restart Home Assistant.
 3. Go to **Settings → Devices & Services → Add Integration** and search for
    **myChevrolet**.
+
+### Home Assistant install button (after manual install)
+
+Once the files are in place, click the badge at the top of this page to start
+the config flow directly:
+
+[![Install myChevrolet in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=mychevrolet)
 
 ### HACS (card only)
 
