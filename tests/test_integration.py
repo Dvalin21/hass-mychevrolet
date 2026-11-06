@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mychevrolet.const import DOMAIN
@@ -241,3 +243,100 @@ async def test_lock_entity_calls_commands(hass: HomeAssistant, mock_onstar) -> N
     )
     assert mock_onstar.lock_door.await_count == 1
     assert mock_onstar.unlock_door.await_count == 1
+
+
+def _make_429_error() -> httpx.HTTPStatusError:
+    """Build an httpx.HTTPStatusError with a 429 response."""
+    request = httpx.Request("POST", "https://na-mobile-api.gm.com/api/diagnostics")
+    response = httpx.Response(429, request=request)
+    return httpx.HTTPStatusError("rate limited", request=request, response=response)
+
+
+def _make_401_error() -> httpx.HTTPStatusError:
+    """Build an httpx.HTTPStatusError with a 401 response."""
+    request = httpx.Request("GET", "https://na-mobile-api.gm.com/api/vehicles")
+    response = httpx.Response(401, request=request)
+    return httpx.HTTPStatusError("unauthorized", request=request, response=response)
+
+
+async def test_gas_vehicle_hides_ev_sensors(hass: HomeAssistant, mock_onstar) -> None:
+    """A gasoline vehicle (no EV BATTERY LEVEL diagnostic) gets no EV sensors."""
+    mock_onstar.diagnostics = AsyncMock(return_value=DIAGNOSTICS)
+    real_entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, title="My Gas Car")
+    real_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(real_entry.entry_id)
+    await hass.async_block_till_done()
+
+    states = {s.entity_id: s for s in hass.states.async_all()}
+
+    def _state(suffix: str):
+        for entity_id, state in states.items():
+            if entity_id.endswith(suffix):
+                return state
+        return None
+
+    assert _state("_odometer") is not None
+    # EV-only sensors must NOT appear on a gas vehicle.
+    assert _state("_battery_level") is None
+    assert _state("_charge_state") is None
+    assert _state("_plugged_in") is None
+    assert _state("_ev_range") is None
+
+
+async def test_rate_limit_backs_off_diagnostics_only(hass: HomeAssistant, mock_onstar) -> None:
+    """A 429 on diagnostics backs off diagnostics but not location."""
+    real_entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, title="My Bolt")
+    real_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(real_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][real_entry.entry_id]["coordinator"]
+
+    # First call succeeds.
+    await coordinator.async_refresh()
+    assert coordinator._diagnostics_backoff_until == 0.0
+
+    # Now make diagnostics return 429.
+    mock_onstar.diagnostics = AsyncMock(side_effect=_make_429_error())
+    await coordinator.async_refresh()
+
+    # Diagnostics endpoint should be backed off.
+    assert coordinator._diagnostics_backoff_until > 0
+    # Location endpoint should NOT be backed off.
+    assert coordinator._location_backoff_until == 0.0
+    assert coordinator.is_rate_limited is True
+
+
+async def test_health_sensor_reports_rate_limit(hass: HomeAssistant, mock_onstar) -> None:
+    """The health sensor reports rate_limited when diagnostics is backed off."""
+    real_entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, title="My Bolt")
+    real_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(real_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][real_entry.entry_id]["coordinator"]
+
+    mock_onstar.diagnostics = AsyncMock(side_effect=_make_429_error())
+    await coordinator.async_refresh()
+
+    states = hass.states.async_all()
+    health = next((s for s in states if s.entity_id.endswith("_health")), None)
+    assert health is not None
+    assert health.state == "rate_limited"
+    assert health.attributes.get("rate_limited") is True
+
+
+async def test_auth_failure_raises_config_entry_auth_failed(
+    hass: HomeAssistant, mock_onstar
+) -> None:
+    """A 401 on get_account_vehicles raises ConfigEntryAuthFailed."""
+    real_entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, title="My Bolt")
+    real_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(real_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][real_entry.entry_id]["coordinator"]
+    mock_onstar.get_account_vehicles = AsyncMock(side_effect=_make_401_error())
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()

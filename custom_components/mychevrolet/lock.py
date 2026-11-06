@@ -8,6 +8,7 @@ from homeassistant.components.lock import LockEntity, LockEntityFeature
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import DOMAIN
 from .entity import MyChevroletEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ async def async_setup_entry(
     hass, entry, async_add_entities
 ) -> None:  # type: ignore[no-untyped-def]
     """Set up the door lock entity."""
-    coordinator: DataUpdateCoordinator = hass.data["mychevrolet"][entry.entry_id][
+    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][
         "coordinator"
     ]
     vin = entry.data["vin"]

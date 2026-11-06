@@ -84,6 +84,7 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_location = 0.0
         self._diagnostics_backoff_until = 0.0
         self._location_backoff_until = 0.0
+        self._last_successful_update: float | None = None
 
     @property
     def vehicle_data(self) -> dict[str, Any] | None:
@@ -93,6 +94,32 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def command_available(self, name: str) -> bool:
         """Whether a remote command is offered for this vehicle."""
         return bool(self.data) and self.onstar.is_command_available(name)
+
+    @property
+    def is_rate_limited(self) -> bool:
+        """True if either endpoint is currently in rate-limit backoff."""
+        now = time.time()
+        return (
+            now < self._diagnostics_backoff_until
+            or now < self._location_backoff_until
+        )
+
+    @property
+    def diagnostics_backoff_remaining(self) -> float | None:
+        """Seconds remaining on the diagnostics backoff, or None."""
+        remaining = self._diagnostics_backoff_until - time.time()
+        return max(remaining, 0.0) if remaining > 0 else None
+
+    @property
+    def location_backoff_remaining(self) -> float | None:
+        """Seconds remaining on the location backoff, or None."""
+        remaining = self._location_backoff_until - time.time()
+        return max(remaining, 0.0) if remaining > 0 else None
+
+    @property
+    def last_successful_update(self) -> float | None:
+        """Unix timestamp of the last successful data update, or None."""
+        return self._last_successful_update
 
     async def _fetch(self, endpoint: str, fetch: Callable[[], Any]) -> Any:
         """Run an endpoint fetch with rate-limit backoff and error mapping."""
@@ -133,11 +160,12 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Rate limited on %s; recreating client (cheater mode)", endpoint)
             await self._recreate_client()
             return self.data.get(endpoint) if self.data else None
-        self._diagnostics_backoff_until = time.time() + RATE_LIMIT_BACKOFF.total_seconds()
-        self._location_backoff_until = self._diagnostics_backoff_until
-        _LOGGER.warning(
-            "Rate limited on %s; backing off %s", endpoint, RATE_LIMIT_BACKOFF
-        )
+        backoff_until = time.time() + RATE_LIMIT_BACKOFF.total_seconds()
+        if endpoint == "diagnostics":
+            self._diagnostics_backoff_until = backoff_until
+        else:
+            self._location_backoff_until = backoff_until
+        _LOGGER.warning("Rate limited on %s; backing off %s", endpoint, RATE_LIMIT_BACKOFF)
         return self.data.get(endpoint) if self.data else None
 
     async def _recreate_client(self) -> None:
@@ -146,6 +174,14 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         new_device_id = str(uuid.uuid4())
         _LOGGER.warning("Recreating OnStar client with new device id: %s", new_device_id)
+
+        # Persist the new device id so a restart doesn't revert to a
+        # device id that GM may still have rate-limited.
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, "device_id": new_device_id},
+        )
+
         try:
             await self.onstar.close()
         except Exception:
@@ -157,7 +193,7 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             device_id=new_device_id,
             vin=self.config_entry.data["vin"],
             totp_secret=self.config_entry.data.get("totp_secret", ""),
-            onstar_pin="",
+            onstar_pin=self.config_entry.data.get("onstar_pin", ""),
             http_client=get_async_client(self.hass),
         )
         self.hass.data.setdefault(DOMAIN, {})[self.config_entry.entry_id]["onstar"] = (
@@ -195,6 +231,7 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             location = self.data.get("location") if self.data else None
             diagnostics = self.data.get("diagnostics") if self.data else None
 
+        self._last_successful_update = time.time()
         return {"location": location, "diagnostics": diagnostics}
 
     # -- Remote commands ---------------------------------------------------

@@ -24,10 +24,9 @@ DEFAULT_CHEATER_MODE = False
 # pyonstar command-failure / rate-limit handling
 RATE_LIMIT_STATUS_CODE = 429
 # Back off a rate-limited endpoint for this long in standard (non-cheater) mode.
-# GM's OnStar link is slow and aggressively rate-limited (500 then 429); a long
-# backoff avoids hammering it. (matches the documented behaviour of existing RE
-# integrations)
-RATE_LIMIT_BACKOFF = timedelta(hours=24)
+# GM's OnStar link is slow and aggressively rate-limited (500 then 429). 30
+# minutes is long enough to cool off without losing a whole day of updates.
+RATE_LIMIT_BACKOFF = timedelta(minutes=30)
 # Cheater mode: poll fast (2 min) and recreate the client with a fresh device id
 # on a 429 to escape GM's per-device-id rate bucket. Opt-in per entry.
 CHEATER_MODE_SCAN_INTERVAL = 2  # minutes

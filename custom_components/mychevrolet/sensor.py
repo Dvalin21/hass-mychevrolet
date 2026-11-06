@@ -18,6 +18,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import DOMAIN
 from .entity import MyChevroletEntity
 from .helpers import get_diagnostic_value, get_diagnostics, is_ev
 
@@ -28,12 +29,15 @@ async def async_setup_entry(
     hass, entry, async_add_entities
 ) -> None:  # type: ignore[no-untyped-def]
     """Set up sensors from the diagnostics the vehicle supports."""
-    coordinator: DataUpdateCoordinator = hass.data["mychevrolet"][entry.entry_id][
+    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][
         "coordinator"
     ]
     vin = entry.data["vin"]
 
     sensors: list[SensorEntity] = [MyChevroletOdometer(coordinator, vin)]
+
+    # Integration health sensor — always present, reflects coordinator health.
+    sensors.append(MyChevroletHealthSensor(coordinator, vin))
 
     diagnostics = get_diagnostics(coordinator.data)
     ev = is_ev(diagnostics)
@@ -174,3 +178,38 @@ def _enum(name: str, diagnostics) -> str | None:  # type: ignore[no-untyped-def]
     known = {"charging", "not_charging", "fully_charged", "plugged", "unplugged"}
     lowered = str(value).lower()
     return lowered if lowered in known else "unknown"
+
+
+class MyChevroletHealthSensor(MyChevroletEntity, SensorEntity):
+    """Integration health: last update success and rate-limit status."""
+
+    _attr_name = "Health"
+    _attr_icon = "mdi:heart-pulse"
+
+    def __init__(self, coordinator, vin):  # type: ignore[no-untyped-def]
+        super().__init__(coordinator, "health", "Health")
+
+    @property
+    def native_value(self) -> str:
+        """Return the integration health state."""
+        if self.coordinator.is_rate_limited:
+            return "rate_limited"
+        if self.coordinator.last_update_success:
+            return "ok"
+        return "error"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return health detail attributes."""
+        attrs: dict[str, Any] = {}
+        if self.coordinator.last_successful_update is not None:
+            attrs["last_successful_update"] = self.coordinator.last_successful_update
+        if self.coordinator.is_rate_limited:
+            attrs["rate_limited"] = True
+            dbr = self.coordinator.diagnostics_backoff_remaining
+            lbr = self.coordinator.location_backoff_remaining
+            if dbr is not None:
+                attrs["diagnostics_backoff_remaining_seconds"] = round(dbr, 1)
+            if lbr is not None:
+                attrs["location_backoff_remaining_seconds"] = round(lbr, 1)
+        return attrs

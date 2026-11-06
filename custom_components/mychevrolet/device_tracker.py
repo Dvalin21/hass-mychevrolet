@@ -9,6 +9,7 @@ from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import DOMAIN
 from .entity import MyChevroletEntity
 from .helpers import get_location
 
@@ -19,7 +20,7 @@ async def async_setup_entry(
     hass, entry, async_add_entities
 ) -> None:  # type: ignore[no-untyped-def]
     """Set up the vehicle location tracker."""
-    coordinator: DataUpdateCoordinator = hass.data["mychevrolet"][entry.entry_id][
+    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][
         "coordinator"
     ]
     vin = entry.data["vin"]
