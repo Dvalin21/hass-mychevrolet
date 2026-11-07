@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import os
 import secrets
 import time
 from pathlib import Path
@@ -535,7 +536,16 @@ class GMAuth:
             if self._gm_token_path.exists():
                 self._gm_token_path.rename(self._gm_token_path.with_suffix(".old"))
             self._current_gm_token = None
-            return await self.authenticate()  # recursive call
+            # Bounded retry: max 3 attempts, then surface the error
+            for attempt in range(3):
+                if self.debug:
+                    logger.debug(f"[GMAuth] Re-auth attempt {attempt + 1}/3")
+                try:
+                    return await self.authenticate()
+                except RuntimeError:
+                    if attempt == 2:
+                        raise
+            raise RuntimeError("GM token missing vehicle info after 3 re-auth attempts")
 
         self._current_gm_token = gm_token
         # Persist both sets
@@ -550,10 +560,12 @@ class GMAuth:
         # MS tokens
         async with aiofiles.open(self._ms_token_path, "w", encoding="utf-8") as fp:
             await fp.write(json.dumps(token_set))
+        os.chmod(self._ms_token_path, 0o600)
         # GM tokens
         if self._current_gm_token:
             async with aiofiles.open(self._gm_token_path, "w", encoding="utf-8") as fp:
                 await fp.write(json.dumps(self._current_gm_token))
+            os.chmod(self._gm_token_path, 0o600)
         if self.debug:
             logger.debug(f"[GMAuth] Tokens persisted to → {self._ms_token_path.parent}")
 

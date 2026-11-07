@@ -77,9 +77,6 @@ class OnStar:
     ) -> None:
         """Initialize OnStar client."""
         self._vin = vin.upper()
-        self._setup_logging(debug)
-        
-        # Store the HTTP client for reuse
         self._http_client = http_client
         
         self._auth = self._create_auth(
@@ -113,16 +110,6 @@ class OnStar:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _setup_logging(self, debug: bool) -> None:
-        """Initialize logging configuration."""
-        if debug:
-            # Initialize basic logging config if debug is enabled.
-            # This will only have an effect the first time it's called.
-            logging.basicConfig(
-                level=logging.DEBUG, 
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
 
     def _create_auth(
         self,
@@ -354,7 +341,6 @@ class OnStar:
     async def diagnostics(
         self, 
         options: Optional[DiagnosticsRequestOptions] = None, 
-        timeout_seconds: int = 180, 
         max_polls: Optional[int] = None
     ) -> Dict[str, Any]:
         """Get diagnostic data from the vehicle."""
@@ -472,8 +458,7 @@ class OnStar:
 
     async def close(self):
         """Close the API client and release resources."""
-        if hasattr(self, '_api_client'):
-            await self._api_client.close()
+        await self._api_client.close()
 
     # ------------------------------------------------------------------
     # Authentication methods
@@ -490,10 +475,6 @@ class OnStar:
         bool
             True if token was successfully refreshed, False otherwise
         """
-        try:
-            logger.debug("Forcing token refresh...")
-            await self._ensure_token(force=True)
-            return True
-        except Exception as e:
-            logger.error(f"Error forcing token refresh: {e}")
-            return False 
+        logger.debug("Forcing token refresh...")
+        await self._ensure_token(force=True)
+        return True

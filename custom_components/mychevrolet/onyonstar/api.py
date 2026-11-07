@@ -42,9 +42,10 @@ class OnStarAPIClient:
         
         # Store whether we created the client or if it was provided
         self._client_provided = http_client is not None
-        # Create a shared client that will be reused across requests
-        # This avoids the blocking SSL verification on each request
-        self._client = http_client if http_client is not None else httpx.AsyncClient(verify=True)
+        self._client = http_client if http_client is not None else httpx.AsyncClient(
+            verify=True,
+            timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0),
+        )
         
     async def close(self):
         """Close the HTTP client session."""
@@ -111,7 +112,10 @@ class OnStarAPIClient:
         
         try:
             # Use the stored HTTP client instead of creating a new one
-            response = await self._client.request(method, url, headers=headers, json=json_body)
+            response = await self._client.request(
+                method, url, headers=headers, json=json_body,
+                timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0),
+            )
             logger.debug("→ status=%s", response.status_code)
             
             # Log response body on error
@@ -155,10 +159,6 @@ class OnStarAPIClient:
                         if current_time >= request_timestamp + self._request_polling_timeout_seconds:
                             logger.error("Command timed out after %s seconds", self._request_polling_timeout_seconds)
                             raise RuntimeError(f"Command timed out after {self._request_polling_timeout_seconds} seconds")
-                    
-                    # For "connect" command, we don't continue polling
-                    if command_type == "connect":
-                        return response_data
                     
                     # For all other commands in non-success states with status URL, continue polling
                     if status_url and status != CommandResponseStatus.SUCCESS.value:
