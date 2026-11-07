@@ -1,6 +1,5 @@
 """API functions for OnStar authentication."""
 
-import jwt
 from typing import Optional
 import httpx
 
@@ -30,8 +29,8 @@ async def get_gm_api_jwt(config: GMAuthConfig, debug: bool = False, http_client:
 
     auth = GMAuth(config, debug=debug, http_client=http_client)
     token_resp = await auth.authenticate(force_refresh=force_refresh)
-    decoded: DecodedPayload = jwt.decode(
-        token_resp["access_token"], options={"verify_signature": False, "verify_aud": False}
+    decoded: DecodedPayload = await auth.verify_jwt(
+        token_resp["access_token"],
     )  # type: ignore[arg-type]
     return {
         "token": token_resp,

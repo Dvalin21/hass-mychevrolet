@@ -12,6 +12,7 @@ from typing import Dict, Optional, Tuple, Union, Any
 import httpx
 import pyotp
 import jwt  # PyJWT
+from jwt.algorithms import RSAAlgorithm
 import aiofiles
 
 from .constants import (
@@ -67,6 +68,12 @@ class GMAuth:
         # OIDC metadata (fetched dynamically)
         self._oidc_metadata: Optional[Dict] = None
         
+        # JWKS cache for JWT signature verification
+        self._jwks_uri: Optional[str] = None
+        self._jwks_cache: Optional[Dict[str, Any]] = None
+        self._jwks_fetched_at: Optional[float] = None
+        self._jwks_ttl = 3600  # 1 hour
+        
         # Cookie jar for session persistence
         self._cookies = httpx.Cookies()
         
@@ -121,7 +128,10 @@ class GMAuth:
 
         if self.debug:
             logger.debug("[GMAuth] Starting authentication flow…")
-            
+
+        # Always run OIDC discovery so JWKS URI is available for JWT verification
+        await self._get_oidc_endpoints()
+
         # Ensure GM token is loaded if available and not forcing refresh
         if self._current_gm_token is None and not force_refresh:
             await self._load_current_gm_api_token()
@@ -248,11 +258,81 @@ class GMAuth:
             
             auth_ep = data.get("authorization_endpoint", FALLBACK_AUTHORIZATION_ENDPOINT)
             token_ep = data.get("token_endpoint", FALLBACK_TOKEN_ENDPOINT)
+            self._jwks_uri = data.get("jwks_uri")
             return auth_ep, token_ep
         except Exception as exc:
             if self.debug:
                 logger.debug(f"[GMAuth] Discovery failed – falling back to hard-coded endpoints ({exc})")
             return FALLBACK_AUTHORIZATION_ENDPOINT, FALLBACK_TOKEN_ENDPOINT
+
+    # ------------------------------------------------------------------
+    # JWT signature verification via JWKS
+    # ------------------------------------------------------------------
+
+    async def _fetch_jwks(self) -> Optional[Dict[str, Any]]:
+        """Fetch JSON Web Key Set from the OIDC provider for JWT verification."""
+        if not self._jwks_uri:
+            if self.debug:
+                logger.debug("[GMAuth] No JWKS URI available – JWT signature verification skipped")
+            return None
+
+        now = time.time()
+        if (self._jwks_cache is not None and self._jwks_fetched_at is not None
+                and now - self._jwks_fetched_at < self._jwks_ttl):
+            return self._jwks_cache
+
+        try:
+            headers = {**COMMON_HEADERS, **JSON_HEADER}
+            resp = await self._make_request('GET', self._jwks_uri, headers=headers, timeout=10)
+            resp.raise_for_status()
+            jwks = resp.json()
+            self._jwks_cache = jwks
+            self._jwks_fetched_at = now
+            if self.debug:
+                logger.debug(f"[GMAuth] JWKS fetched from {self._jwks_uri}")
+            return jwks
+        except Exception as exc:
+            if self.debug:
+                logger.debug(f"[GMAuth] JWKS fetch failed – JWT verification will fail ({exc})")
+            return None
+
+    async def verify_jwt(self, token: str, issuer: Optional[str] = None,
+                         audience: Optional[str] = None) -> Dict[str, Any]:
+        """Verify JWT signature and claims using JWKS.
+
+        Raises ValueError if the token cannot be verified.
+        """
+        # Get unverified header to find the key ID
+        header = jwt.get_unverified_header(token)
+        kid = header.get("kid")
+        if not kid:
+            raise ValueError("JWT missing 'kid' header – cannot verify signature")
+
+        jwks = await self._fetch_jwks()
+        if jwks is None:
+            raise ValueError("JWKS unavailable – cannot verify JWT signature")
+
+        # Find the matching public key by kid
+        public_key = None
+        for key in jwks.get("keys", []):
+            if key.get("kid") == kid:
+                public_key = RSAAlgorithm.from_jwk(json.dumps(key))
+                break
+
+        if public_key is None:
+            raise ValueError(f"No matching JWKS key found for kid: {kid}")
+
+        # Verify signature and claims
+        options = {"verify_signature": True, "verify_aud": bool(audience)}
+        decoded = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=audience,
+            issuer=issuer,
+            options=options,
+        )
+        return decoded
 
     # ------------------------------------------------------------------
     # HTTP flow helper methods (GET/POST with debug + cookie mgmt)
@@ -523,9 +603,8 @@ class GMAuth:
         gm_token["expires_at"] = int(time.time()) + int(gm_token["expires_in"])
 
         # Sanity check – ensure vehs are present
-        decoded: DecodedPayload = jwt.decode(
+        decoded: DecodedPayload = await self.verify_jwt(
             gm_token["access_token"],
-            options={"verify_signature": False, "verify_aud": False},
         )  # type: ignore[arg-type]
         if not decoded.get("vehs"):
             # Wipe tokens for reauth
