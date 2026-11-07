@@ -7,10 +7,12 @@ odometer, tire-pressure and GPS data as sensors, and door-lock / remote-start /
 honk-and-flash as controls — all by polling the same OnStar cloud API the mobile
 app uses.
 
-Built on top of [`pyonstar`](https://pypi.org/project/pyonstar/) (a pure-Python
-port of the OnStarJS client), so all the hard parts — the Microsoft B2C login,
-the GM API token exchange, the two-token caching and the command-status polling
-— are handled by a battle-tested dependency rather than re-invented here.
+Built on top of [`onyonstar`](./custom_components/mychevrolet/onyonstar/) (a
+vendored fork of [`pyonstar`](https://github.com/leboff/pyonstar)), a pure-Python
+port of the OnStarJS client. `onyonstar` is included directly in this repository
+so there is no external PyPI dependency that can go unmaintained. It handles the
+Microsoft B2C login, the GM API token exchange, two-token caching, JWT signature
+verification via JWKS, and command-status polling.
 
 > **Region:** This integration targets the **US** OnStar cloud
 > (`na-mobile-api.gm.com`). Vehicles enrolled on a different regional backend
@@ -109,8 +111,10 @@ that command.*
 - The vehicle's **VIN** (17 characters).
 - Optional but often required: a **TOTP secret**. GM's login increasingly gates
   automated clients behind a time-based one-time password shown in the app's
-  security setup; `pyonstar` supports it. Leave blank if your account doesn't
-  use it.
+  security setup. Leave blank if your account doesn't use it.
+- Python dependencies (`pyjwt`, `pyotp`, `aiofiles`) are pinned in
+  `manifest.json` and installed automatically by Home Assistant. `httpx` is
+  provided by Home Assistant core.
 
 ## Installation
 
@@ -207,10 +211,12 @@ in:
 
 ### Re-authentication
 
-`pyonstar` caches a Microsoft identity token and a GM API token under
-`.storage/mychevrolet/`. When GM expires or revokes them and a call comes back
-`401`/`403`, the config entry triggers a **re-auth** prompt — re-enter your
-credentials and everything resumes without re-adding the vehicle.
+`onyonstar` caches a Microsoft identity token and a GM API token under
+`.storage/mychevrolet/` with `0o600` file permissions. JWTs are verified against
+GM's JWKS for signature and issuer before being accepted. When GM expires or
+revokes them and a call comes back `401`/`403`, the config entry triggers a
+**re-auth** prompt — re-enter your credentials and everything resumes without
+re-adding the vehicle.
 
 ### Manual token fallback
 
@@ -223,24 +229,27 @@ during setup), you can drop in a token you captured by hand:
 3. Place it at `.storage/mychevrolet/microsoft_tokens.json` in your HA config.
 
 On the next start the client uses the file directly instead of re-running the
-login.
+login. Token files are written with `0o600` permissions.
 
 ## Development
 
 The integration is tested with the Home Assistant test harness
 (`pytest-homeassistant-custom-component`), with all OnStar network I/O mocked —
-no credentials or live vehicle required.
+no credentials or live vehicle required. `onyonstar` has its own unit tests for
+JWT verification, JWKS caching, and token file permissions.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install "pytest-homeassistant-custom-component==0.13.200" "pyonstar==0.0.14"
+pip install "pytest-homeassistant-custom-component==0.13.200" \
+  "pyjwt>=2.8.0,<3.0.0" "pyotp>=2.9.0,<3.0.0" "aiofiles>=23.2.1,<24.0.0"
 ruff check custom_components/mychevrolet tests
 pytest
 ```
 
-Tests assert that the config flow creates an entry, every expected entity
-appears (including the EV-only ones), lock/remote commands reach the client, and
-unload closes the client.
+17 tests pass: 8 integration tests (config flow, entity setup, unload, lock
+commands, gas vs EV, rate-limit backoff, health sensor, auth failure) and 9
+`onyonstar` unit tests (JWKS caching, JWT signature/issuer verification, bad
+signature rejection, token file permissions).
 
 ## Known limitations
 
@@ -251,13 +260,19 @@ unload closes the client.
   door-lock status, so the lock entity shows an unknown state until a refresh
   confirms it.
 - **Login can be fragile.** GM periodically tightens automated-login defenses;
-  when that happens, use the manual token fallback above until `pyonstar` is
+  when that happens, use the manual token fallback above until `onyonstar` is
   updated.
+- **Token security.** Auth and GM API tokens are stored as JSON files under
+  `.storage/mychevrolet/` with `0o600` permissions. JWTs are verified against
+  GM's JWKS for signature and issuer. Protect your HA config directory — anyone
+  who can read these token files can unlock and start your vehicle.
 
 ## Credits & references
 
-- [`pyonstar`](https://pypi.org/project/pyonstar/) — the OnStar/myChevrolet API
-  client this integration wraps.
+- [`onyonstar`](./custom_components/mychevrolet/onyonstar/) — vendored OnStar
+  client, originally [`pyonstar`](https://github.com/leboff/pyonstar) by Bryan
+  Leboff, itself a port of [`OnStarJS`](https://github.com/BigThunderSR/OnStarJS).
+  Vendored here to eliminate dependency on an unmaintained PyPI package.
 - Home Assistant [custom integration
   docs](https://developers.home-assistant.io/docs/creating_component_file_structure)
   and [config-flow
