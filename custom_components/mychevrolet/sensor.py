@@ -24,6 +24,19 @@ from .helpers import get_diagnostic_value, get_diagnostics, is_ev
 
 _LOGGER = logging.getLogger(__name__)
 
+# Map internal sensor unique_id to the exact pyonstar diagnostic name.
+# pyonstar returns names like "EV BATTERY LEVEL", not "BATTERY_LEVEL".
+DIAG_MAP: dict[str, str] = {
+    "battery_level": "EV BATTERY LEVEL",
+    "charge_state": "EV CHARGE STATE",
+    "plug_state": "EV PLUG STATE",
+    "plug_voltage": "EV PLUG VOLTAGE",
+    "charger_power_level": "CHARGER POWER LEVEL",
+    "ev_range": "VEHICLE RANGE",
+    "last_trip_efficiency": "LAST TRIP ELECTRIC ECON",
+    "odometer": "ODOMETER",
+}
+
 
 async def async_setup_entry(
     hass, entry, async_add_entities
@@ -108,7 +121,7 @@ class MyChevroletSensor(MyChevroletEntity, SensorEntity):
         options=None,
     ):
         super().__init__(coordinator, unique_id, name)
-        self._diagnostic = unique_id.upper()
+        self._diagnostic = DIAG_MAP.get(unique_id, unique_id.upper())
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = state_class

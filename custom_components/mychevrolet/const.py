@@ -27,10 +27,6 @@ RATE_LIMIT_STATUS_CODE = 429
 # GM's OnStar link is slow and aggressively rate-limited (500 then 429). 30
 # minutes is long enough to cool off without losing a whole day of updates.
 RATE_LIMIT_BACKOFF = timedelta(minutes=30)
-# Cheater mode: poll fast (2 min) and recreate the client with a fresh device id
-# on a 429 to escape GM's per-device-id rate bucket. Opt-in per entry.
-CHEATER_MODE_SCAN_INTERVAL = 2  # minutes
-
 # What the coordinator fetches each cycle. Diagnostics is the expensive,
 # rate-limited call (up to ~180s per pyonstar); location is cheap.
 UPDATE_TIMEOUT_SECONDS = 240

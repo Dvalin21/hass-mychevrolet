@@ -6,8 +6,8 @@ import logging
 import uuid
 from typing import Any
 
+import httpx
 import voluptuous as vol
-from aiohttp import ClientError
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_CHEATER_MODE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MIN_SCAN_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ USER_SCHEMA = vol.Schema(
 OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
-            vol.Coerce(int), vol.Range(min=5, max=1440)
+            vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=1440)
         ),
         vol.Required(CONF_CHEATER_MODE, default=DEFAULT_CHEATER_MODE): bool,
     }
@@ -56,7 +57,6 @@ async def _validate(hass: HomeAssistant, user_input: dict[str, Any]) -> str:
     """
     device_id = (user_input.get("device_id") or "").strip() or str(uuid.uuid4())
     httpx_client = get_async_client(hass)
-    httpx_client.follow_redirects = True
     onstar = OnStar(
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
@@ -69,13 +69,17 @@ async def _validate(hass: HomeAssistant, user_input: dict[str, Any]) -> str:
     try:
         await onstar.get_account_vehicles()
         vehicle = onstar.get_vehicle_data()
-    except ClientError as err:
+    except httpx.HTTPStatusError as err:
+        if err.response.status_code in (401, 403):
+            raise InvalidAuth(str(err)) from err
+        raise CannotConnect(str(err)) from err
+    except (httpx.RequestError, RuntimeError, ValueError, KeyError) as err:
+        text = str(err).lower()
+        if any(kw in text for kw in ("unauthorized", "access denied", "auth", "token", "login")):
+            raise InvalidAuth(str(err)) from err
         raise CannotConnect(str(err)) from err
     except HomeAssistantError:
         raise
-    except Exception as err:
-        _LOGGER.debug("Unexpected error validating myChevrolet login: %s", err)
-        raise InvalidAuth from err
     finally:
         # httpx_client is HA's shared session; do not close it.
         pass

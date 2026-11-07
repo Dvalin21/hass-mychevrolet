@@ -37,7 +37,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyChevroletConfigEntry) 
     token_dir.mkdir(parents=True, exist_ok=True)
 
     httpx_client = get_async_client(hass)
-    httpx_client.follow_redirects = True
 
     onstar = OnStar(
         username=entry.data[CONF_USERNAME],
@@ -45,7 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyChevroletConfigEntry) 
         device_id=entry.data.get("device_id", ""),
         vin=entry.data[CONF_VIN],
         totp_secret=entry.data.get("totp_secret", ""),
-        onstar_pin="",
+        onstar_pin=entry.data.get("onstar_pin", ""),
         token_location=str(token_dir),
         http_client=httpx_client,
     )
@@ -54,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyChevroletConfigEntry) 
         hass,
         onstar,
         entry,
-        cheater_mode=entry.data.get(CONF_CHEATER_MODE, DEFAULT_CHEATER_MODE),
+        cheater_mode=entry.options.get(CONF_CHEATER_MODE, DEFAULT_CHEATER_MODE),
     )
     await coordinator.async_config_entry_first_refresh()
 

@@ -79,7 +79,7 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.onstar = onstar
         self.config_entry = config_entry
-        self.cheater_mode = config_entry.data.get(CONF_CHEATER_MODE, cheater_mode)
+        self.cheater_mode = config_entry.options.get(CONF_CHEATER_MODE, cheater_mode)
         self._last_diagnostics = 0.0
         self._last_location = 0.0
         self._diagnostics_backoff_until = 0.0
@@ -141,6 +141,10 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning(msg)
             raise UpdateFailed(msg) from err
         except httpx.HTTPStatusError as err:
+            if err.response.status_code in (401, 403):
+                raise ConfigEntryAuthFailed(
+                    f"OnStar authentication failed: {err}"
+                ) from err
             if err.response.status_code == RATE_LIMIT_STATUS_CODE:
                 return await self._handle_rate_limit(endpoint)
             msg = f"HTTP {err.response.status_code} fetching {endpoint}: {err}"
@@ -177,7 +181,7 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Persist the new device id so a restart doesn't revert to a
         # device id that GM may still have rate-limited.
-        self.hass.config_entries.async_update_entry(
+        await self.hass.config_entries.async_update_entry(
             self.config_entry,
             data={**self.config_entry.data, "device_id": new_device_id},
         )
@@ -230,8 +234,9 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # One leg failing must not wipe the whole update; keep what we have.
             location = self.data.get("location") if self.data else None
             diagnostics = self.data.get("diagnostics") if self.data else None
-
-        self._last_successful_update = time.time()
+        else:
+            # Only mark success when both endpoints returned data.
+            self._last_successful_update = time.time()
         return {"location": location, "diagnostics": diagnostics}
 
     # -- Remote commands ---------------------------------------------------
@@ -244,7 +249,6 @@ class MyChevroletDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"{what}: timed out waiting for OnStar") from err
         except httpx.HTTPStatusError as err:
             if err.response.status_code == RATE_LIMIT_STATUS_CODE:
-                await self._handle_rate_limit("command")
                 raise HomeAssistantError(
                     f"{what}: rate limited by OnStar"
                 ) from err
