@@ -21,6 +21,7 @@ from .constants import (
     REDIRECT_URI,
     SCOPE_STRING,
     DISCOVERY_URL,
+    OIDC_ISSUER,
     FALLBACK_AUTHORIZATION_ENDPOINT,
     FALLBACK_TOKEN_ENDPOINT,
     GM_TOKEN_ENDPOINT,
@@ -605,6 +606,7 @@ class GMAuth:
         # Sanity check – ensure vehs are present
         decoded: DecodedPayload = await self.verify_jwt(
             gm_token["access_token"],
+            issuer=OIDC_ISSUER,
         )  # type: ignore[arg-type]
         if not decoded.get("vehs"):
             # Wipe tokens for reauth

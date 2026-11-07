@@ -18,8 +18,6 @@ OIDC_ISSUER = (
     "gmb2cprod.onmicrosoft.com/"
     "b2c_1a_seamless_mobile_signuporsignin/v2.0/"
 )
-
-# Fallback endpoints if discovery fails
 FALLBACK_AUTHORIZATION_ENDPOINT = (
     "https://custlogin.gm.com/"
     "gmb2cprod.onmicrosoft.com/"

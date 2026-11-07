@@ -3,6 +3,7 @@
 from typing import Optional
 import httpx
 
+from .constants import OIDC_ISSUER
 from .types import GMAuthConfig, DecodedPayload
 from .gm_auth import GMAuth
 
@@ -31,6 +32,7 @@ async def get_gm_api_jwt(config: GMAuthConfig, debug: bool = False, http_client:
     token_resp = await auth.authenticate(force_refresh=force_refresh)
     decoded: DecodedPayload = await auth.verify_jwt(
         token_resp["access_token"],
+        issuer=OIDC_ISSUER,
     )  # type: ignore[arg-type]
     return {
         "token": token_resp,
