@@ -14,7 +14,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.httpx_client import get_async_client
-from pyonstar import OnStar
+from .onyonstar import OnStar
 
 from .const import (
     CONF_CHEATER_MODE,

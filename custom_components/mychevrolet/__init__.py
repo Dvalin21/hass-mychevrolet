@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.storage import STORAGE_DIR
-from pyonstar import OnStar
+from .onyonstar import OnStar
 
 from .const import (
     CONF_CHEATER_MODE,
